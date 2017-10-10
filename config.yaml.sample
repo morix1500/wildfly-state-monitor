@@ -1,0 +1,12 @@
+slack:
+  api_url: "https://hooks.slack.com/services/XXXXXX/XXXXXX/XXXXXXX"
+  channel: "#general"
+wildfly:
+  war_path: "/etc/wildfly/standalone/developments/sample.war"
+app:
+  log_path: "/var/log/wildfly-state-monitor.log"
+  duration: 5
+  notify_marker:
+    - deployed
+    - failed
+    - undeployed
