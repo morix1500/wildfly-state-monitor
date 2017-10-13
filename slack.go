@@ -8,29 +8,40 @@ import (
 )
 
 const (
-	SLACK_ATTACHMENT_START = "good"
-	SLACK_ATTACHMENT_END   = "warning"
-	SLACK_ATTACHMENT_ERR   = "danger"
+	// SlackAttachementStart -- color of slack message "green"
+	SlackAttachementStart = "good"
+	// SlackAttachementEnd -- color of slack message "yellow"
+	SlackAttachementEnd   = "warning"
+	// SlackAttachementErr -- color of slack message "red"
+	SlackAttachementErr   = "danger"
 )
 
+// ErrSlackRequest -- slack api request error
+var ErrSlackRequest = errors.New("Request Error")
+
+
+// Slack -- parts of slack message
 type Slack struct {
 	Channel     string       `json:"channel"`
 	UserName    string       `json:"username"`
-	IconUrl     string       `json:"icon_url"`
+	IconURL     string       `json:"icon_url"`
 	Attachments []Attachment `json:"attachments"`
 }
 
+// Attachment -- parts of slack message
 type Attachment struct {
 	Fallback string            `json:"fallback"`
 	Color    string            `json:"color"`
 	Fields   []AttachmentField `json:"fields"`
 }
 
+// AttachmentField -- parts of slack message
 type AttachmentField struct {
 	Title string `json:"title"`
 	Value string `json:"value"`
 }
 
+// SetAttachmentField -- set parameter
 func SetAttachmentField(title, value string) AttachmentField {
 	return AttachmentField{
 		Title: title,
@@ -38,6 +49,7 @@ func SetAttachmentField(title, value string) AttachmentField {
 	}
 }
 
+// SetAttachment -- set parameter
 func SetAttachment(fallback, color string, fields []AttachmentField) Attachment {
 	return Attachment{
 		Fallback: fallback,
@@ -46,24 +58,22 @@ func SetAttachment(fallback, color string, fields []AttachmentField) Attachment 
 	}
 }
 
-func setSlack(channel string, attachments []Attachment) Slack {
+// SetSlack -- set parameter
+func SetSlack(channel string, attachments []Attachment) Slack {
 	return Slack{
 		Channel:     channel,
 		UserName:    "Wildfly State Monitor",
-		IconUrl:     "http://design.jboss.org/wildfly/logo/final/wildfly_icon_64px.png",
+		IconURL:     "http://design.jboss.org/wildfly/logo/final/wildfly_icon_64px.png",
 		Attachments: attachments,
 	}
 }
 
-var (
-	SlackRequestErr = errors.New("Request Error")
-)
-
-func SlackNotification(api_url string, msg Slack) error {
+// SlackNotification -- send request to slack api
+func SlackNotification(apiURL string, msg Slack) error {
 	params, _ := json.Marshal(msg)
 
 	resp, err := http.PostForm(
-		api_url,
+		apiURL,
 		url.Values{
 			"payload": {
 				string(params),
@@ -71,7 +81,7 @@ func SlackNotification(api_url string, msg Slack) error {
 		},
 	)
 	if err != nil {
-		return errors.Wrapf(SlackRequestErr, "Http Status is ", resp.Status)
+		return errors.Wrapf(ErrSlackRequest, "Http Status is ", resp.Status)
 	}
 
 	return nil

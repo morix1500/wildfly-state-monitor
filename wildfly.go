@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// Marker -- wildfly marker
 type Marker struct {
 	Name        string
 	Type        int
@@ -20,29 +21,34 @@ type Marker struct {
 }
 
 const (
-	MARKER_TYPE_START = 0
-	MARKER_TYPE_END   = 1
-	MARKER_TYPE_ERR   = 2
+	// MarkerTypeStart -- Means wildfly start
+	MarkerTypeStart = 0
+	// MarkerTypeEnd -- Means wildfly end
+	MarkerTypeEnd   = 1
+	// MarkerTypeErr -- Means wildfly error
+	MarkerTypeErr   = 2
 )
 
 const (
+	// ExitCodeOK -- Success code
 	ExitCodeOK = iota
+	// ExitCodeErr -- Error code
 	ExitCodeErr
 )
 
-var markers map[string]Marker = map[string]Marker{
-	"dodeploy":      {"DoDeploy", MARKER_TYPE_START, "doing deploy"},
-	"skipdeploy":    {"SkipDeploy", MARKER_TYPE_END, "disable auto-deploy"},
-	"isdeploying":   {"IsDeploying", MARKER_TYPE_START, "deploying"},
-	"deployed":      {"Deployed", MARKER_TYPE_START, "deployed"},
-	"failed":        {"Failed", MARKER_TYPE_ERR, "deploy failed"},
-	"isundeploying": {"IsUnDeploying", MARKER_TYPE_END, "disabling deploy"},
-	"undeployed":    {"UnDeployed", MARKER_TYPE_END, "disable deploy"},
-	"pending":       {"Pending", MARKER_TYPE_END, "Pending deploy"},
+var markerList = map[string]Marker{
+	"dodeploy":      {"DoDeploy", MarkerTypeStart, "doing deploy"},
+	"skipdeploy":    {"SkipDeploy", MarkerTypeEnd, "disable auto-deploy"},
+	"isdeploying":   {"IsDeploying", MarkerTypeStart, "deploying"},
+	"deployed":      {"Deployed", MarkerTypeStart, "deployed"},
+	"failed":        {"Failed", MarkerTypeErr, "deploy failed"},
+	"isundeploying": {"IsUnDeploying", MarkerTypeEnd, "disabling deploy"},
+	"undeployed":    {"UnDeployed", MarkerTypeEnd, "disable deploy"},
+	"pending":       {"Pending", MarkerTypeEnd, "Pending deploy"},
 }
 
-func GetWildflyState(war_path string) (res []Marker, err error) {
-	basedir := filepath.Dir(war_path)
+func getWildflyState(warPath string) (res []Marker, err error) {
+	basedir := filepath.Dir(warPath)
 
 	files, err := ioutil.ReadDir(basedir)
 	if err != nil {
@@ -52,14 +58,14 @@ func GetWildflyState(war_path string) (res []Marker, err error) {
 		arr := strings.Split(file.Name(), ".")
 		ext := arr[len(arr)-1]
 
-		if v, exists := markers[ext]; exists {
+		if v, exists := markerList[ext]; exists {
 			res = append(res, v)
 		}
 	}
 	return
 }
 
-func sendNotification(api_url, channel, msg string, marker_type int) error {
+func sendNotification(apiURL, channel, msg string, markerType int) error {
 	hostname, _ := os.Hostname()
 	fields := []AttachmentField{
 		SetAttachmentField("HostName", hostname),
@@ -67,49 +73,49 @@ func sendNotification(api_url, channel, msg string, marker_type int) error {
 	}
 
 	var color string
-	switch marker_type {
-	case MARKER_TYPE_START:
-		color = SLACK_ATTACHMENT_START
-	case MARKER_TYPE_END:
-		color = SLACK_ATTACHMENT_END
-	case MARKER_TYPE_ERR:
-		color = SLACK_ATTACHMENT_ERR
+	switch markerType {
+	case MarkerTypeStart:
+		color = SlackAttachementStart
+	case MarkerTypeEnd:
+		color = SlackAttachementEnd
+	case MarkerTypeErr:
+		color = SlackAttachementErr
 	}
 
 	attachments := []Attachment{
 		SetAttachment(msg, color, fields),
 	}
-	slack := setSlack(channel, attachments)
-	err := SlackNotification(api_url, slack)
+	slack := SetSlack(channel, attachments)
+	err := SlackNotification(apiURL, slack)
 
 	return err
 }
 
-func monitorState(config Config, notify_markers map[string]bool) int {
-	var now_state []Marker
+func monitorState(config Config, notifyMarkers map[string]bool) int {
+	var nowState []Marker
 	first := true
 
-	signal_ch := make(chan os.Signal, 1)
-	signal.Notify(signal_ch, syscall.SIGINT, syscall.SIGTERM)
+	signalch := make(chan os.Signal, 1)
+	signal.Notify(signalch, syscall.SIGINT, syscall.SIGTERM)
 
 loop:
 	for {
 		select {
-		case <-signal_ch:
+		case <-signalch:
 			break loop
 		default:
 			time.Sleep(config.App.Duration * time.Second)
 
-			res, err := GetWildflyState(config.Wildfly.WarPath)
+			res, err := getWildflyState(config.Wildfly.WarPath)
 			if err != nil {
 				log.Error(err)
 				return ExitCodeErr
 			}
 			if first {
-				now_state = res
+				nowState = res
 				first = false
 			}
-			if reflect.DeepEqual(now_state, res) {
+			if reflect.DeepEqual(nowState, res) {
 				continue
 			}
 
@@ -120,15 +126,15 @@ loop:
 					"description": v.Description,
 				}).Info("Change State")
 
-				if len(notify_markers) == 0 {
-					err := sendNotification(config.Slack.ApiUrl, config.Slack.Channel, v.Description, v.Type)
+				if len(notifyMarkers) == 0 {
+					err := sendNotification(config.Slack.APIURL, config.Slack.Channel, v.Description, v.Type)
 					if err != nil {
 						log.Error(err)
 					}
 					log.Info("Send notification to slack.")
 				} else {
-					if _, exists := notify_markers[v.Name]; exists {
-						err := sendNotification(config.Slack.ApiUrl, config.Slack.Channel, v.Description, v.Type)
+					if _, exists := notifyMarkers[v.Name]; exists {
+						err := sendNotification(config.Slack.APIURL, config.Slack.Channel, v.Description, v.Type)
 						if err != nil {
 							log.Error(err)
 						}
@@ -136,18 +142,18 @@ loop:
 					}
 				}
 			}
-			now_state = res
+			nowState = res
 		}
 	}
 	return ExitCodeOK
 }
 
-func settingLog(log_path string) error {
+func settingLog(logPath string) error {
 	log.SetFormatter(&log.JSONFormatter{})
-	if log_path == "" {
+	if logPath == "" {
 		log.SetOutput(os.Stdout)
 	} else {
-		logfile, err := os.OpenFile(log_path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		logfile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return err
 		}
@@ -156,17 +162,17 @@ func settingLog(log_path string) error {
 	return nil
 }
 
-func Run(args []string) int {
-	var config_path string
+func run(args []string) int {
+	var configPath string
 
 	flags := flag.NewFlagSet("wfsm", flag.ContinueOnError)
-	flags.StringVar(&config_path, "config", "config.yaml", "Specify config file path")
+	flags.StringVar(&configPath, "config", "config.yaml", "Specify config file path")
 
 	if err := flags.Parse(args[1:]); err != nil {
 		flags.PrintDefaults()
 		return ExitCodeErr
 	}
-	config, err := loadConfig(config_path)
+	config, err := loadConfig(configPath)
 	if err != nil {
 		log.Error(err)
 		return ExitCodeErr
@@ -177,24 +183,24 @@ func Run(args []string) int {
 		return ExitCodeErr
 	}
 
-	var notify_markers = make(map[string]bool)
+	var notifyMarkers = make(map[string]bool)
 
 	for _, v := range config.App.NotifyMarker {
-		if _, exists := markers[v]; !exists {
+		if _, exists := markerList[v]; !exists {
 			log.Error("Error specify marker :" + v)
 			return 1
 		}
-		notify_markers[markers[v].Name] = true
+		notifyMarkers[markerList[v].Name] = true
 	}
 
 	log.Info("Start Monitoring...")
-	exit_code := monitorState(config, notify_markers)
+	exitCode := monitorState(config, notifyMarkers)
 	log.Info("End Monitoring")
 
-	return exit_code
+	return exitCode
 }
 
 func main() {
-	exit_code := Run(os.Args)
-	os.Exit(exit_code)
+	exitCode := run(os.Args)
+	os.Exit(exitCode)
 }
