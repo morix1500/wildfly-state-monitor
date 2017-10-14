@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"fmt"
 )
 
 // Marker -- wildfly marker
@@ -164,14 +165,25 @@ func settingLog(logPath string) error {
 
 func run(args []string) int {
 	var configPath string
+	var version bool
 
-	flags := flag.NewFlagSet("wfsm", flag.ContinueOnError)
+	flags := flag.NewFlagSet("wildfly-state-monitor", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
 	flags.StringVar(&configPath, "config", "config.yaml", "Specify config file path")
+	flags.StringVar(&configPath, "c", "config.yaml", "Specify config file path")
+	flags.BoolVar(&version, "v", false, "Output version number.")
+	flags.BoolVar(&version, "version", false, "Output version number.")
 
 	if err := flags.Parse(args[1:]); err != nil {
 		flags.PrintDefaults()
 		return ExitCodeErr
 	}
+
+	if version {
+		fmt.Println(Version)
+		return ExitCodeOK
+	}
+
 	config, err := loadConfig(configPath)
 	if err != nil {
 		log.Error(err)
@@ -188,7 +200,7 @@ func run(args []string) int {
 	for _, v := range config.App.NotifyMarker {
 		if _, exists := markerList[v]; !exists {
 			log.Error("Error specify marker :" + v)
-			return 1
+			return ExitCodeErr
 		}
 		notifyMarkers[markerList[v].Name] = true
 	}
